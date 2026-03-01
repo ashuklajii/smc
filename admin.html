@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMC Parking - Smart Verify</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        #sideMenu { transition: transform 0.3s ease-in-out; transform: translateX(-100%); }
+        #sideMenu.open { transform: translateX(0); }
+        .sync-active { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* WIDE SCANNER UI */
+        #camOverlay { display: none; position: fixed; inset: 0; background: black; z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        .scan-window { 
+            position: absolute; border: 3px solid #fbbf24; width: 85%; height: 120px; border-radius: 12px; 
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
+        }
+        .scan-line { width: 100%; height: 2px; background: rgba(251, 191, 36, 0.5); box-shadow: 0 0 15px #fbbf24; animation: scanMove 2s infinite linear; }
+        @keyframes scanMove { 0% { transform: translateY(-50px); } 100% { transform: translateY(50px); } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <audio id="beepSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
+
+    <div class="bg-slate-900 text-white p-4 flex items-center shadow-lg sticky top-0 z-30">
+        <button onclick="toggleMenu()" class="text-2xl p-2 focus:outline-none hover:text-blue-400">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="flex-1 text-center">
+            <h1 class="text-xl font-black italic tracking-tight uppercase text-blue-400">Gate Verification</h1>
+        </div>
+        <div id="syncBtn" class="text-emerald-500 text-sm">
+            <i class="fas fa-sync-alt"></i>
+        </div>
+    </div>
+
+    <div id="sideMenu" class="fixed inset-y-0 left-0 w-64 bg-slate-900 z-50 p-6 shadow-2xl">
+        <button onclick="toggleMenu()" class="text-white text-2xl mb-8 hover:text-red-400"><i class="fas fa-times"></i></button>
+        <div class="space-y-6">
+            <a href="index.html" class="flex items-center gap-4 text-slate-300 hover:text-blue-400 font-black uppercase text-sm tracking-widest"><i class="fas fa-plus-circle"></i> Entry Point</a>
+            <a href="admin.html" class="flex items-center gap-4 text-blue-400 font-black uppercase text-sm tracking-widest"><i class="fas fa-shield-check"></i> Gate Verify</a>
+            <a href="head-admin.html" class="flex items-center gap-4 text-slate-300 hover:text-blue-400 font-black uppercase text-sm tracking-widest"><i class="fas fa-chart-line"></i> Analytics</a>
+        </div>
+    </div>
+    <div id="menuOverlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/60 hidden z-40 transition-opacity"></div>
+
+    <div class="max-w-md mx-auto p-6">
+        <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 mb-6">
+            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vehicle Plate Number</label>
+            <div class="relative mt-2 flex gap-2">
+                <div class="relative flex-1">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    <input id="searchInput" onkeyup="searchVeh()" type="text" placeholder="ENTER NUMBER" 
+                        class="w-full p-4 pl-12 rounded-2xl bg-slate-50 border-2 border-slate-100 font-black text-2xl uppercase outline-none focus:border-blue-500 transition-all">
+                </div>
+                <button onclick="openCam()" class="bg-blue-600 text-white w-14 rounded-2xl flex items-center justify-center text-xl shadow-lg active:scale-95 transition-all">
+                    <i class="fas fa-camera"></i>
+                </button>
+            </div>
+        </div>
+        <div id="results"></div>
+    </div>
+
+    <div id="camOverlay">
+        <video id="video" autoplay playsinline></video>
+        <div class="scan-window">
+            <div class="scan-line"></div>
+        </div>
+        <canvas id="canvas" class="hidden"></canvas>
+        
+        <div class="absolute bottom-10 flex gap-4 w-full px-6">
+            <button onclick="closeCam()" class="flex-1 bg-white/20 backdrop-blur text-white py-4 rounded-2xl font-bold uppercase">Back</button>
+            <button id="snapBtn" onclick="snap()" class="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black uppercase shadow-lg">SCAN NOW</button>
+            <button onclick="toggleFlash()" class="flex-1 bg-white/20 backdrop-blur text-white py-4 rounded-2xl text-xl"><i class="fas fa-bolt"></i></button>
+        </div>
+    </div>
+
+    <script>
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbz6kvy4Wn8dmmXVbcx2gg-PI8D6a30l7x5Z7X6Xn4FwrfycrJ3A403_wm1batb39_8N/exec';
+const AI_SERVER_URL = "http://192.168.241.1:5501/scan"; 
+
+        let allData = [];
+        let isSyncing = false;
+        let stream = null;
+        let flash = false;
+
+        function toggleMenu() {
+            document.getElementById('sideMenu').classList.toggle('open');
+            document.getElementById('menuOverlay').classList.toggle('hidden');
+        }
+
+        // --- CAMERA LOGIC ---
+        async function openCam() {
+            document.getElementById('camOverlay').style.display = 'flex';
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: { ideal: 1280 } } 
+                });
+                document.getElementById('video').srcObject = stream;
+            } catch (err) { alert("Camera Access Denied"); closeCam(); }
+        }
+
+        function closeCam() {
+            if(stream) stream.getTracks().forEach(t => t.stop());
+            document.getElementById('camOverlay').style.display = 'none';
+        }
+
+        async function toggleFlash() {
+            const track = stream.getVideoTracks()[0];
+            flash = !flash;
+            try { await track.applyConstraints({ advanced: [{ torch: flash }] }); } catch(e) { alert("Flash not supported"); }
+        }
+
+        // --- YOLOv8 INTEGRATION ---
+        async function snap() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const btn = document.getElementById('snapBtn');
+            const beep = document.getElementById('beepSound');
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            btn.innerText = "YOLOv8 READING...";
+            btn.disabled = true;
+
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'plate.jpg');
+
+                try {
+                    const response = await fetch(AI_SERVER_URL, { method: 'POST', body: formData });
+                    const result = await response.json();
+                    
+                    if(result.plate && result.plate !== "Not Found") {
+                        document.getElementById('searchInput').value = result.plate;
+                        if(beep) beep.play(); 
+                        closeCam();
+                        searchVeh(); // Trigger search immediately after YOLO detection
+                    } else {
+                        alert("AI could not find plate. Move closer.");
+                    }
+                } catch (err) {
+                    alert("AI Server Error: Is your Python app.py running?");
+                } finally {
+                    btn.innerText = "SCAN NOW";
+                    btn.disabled = false;
+                }
+            }, 'image/jpeg', 0.8);
+        }
+
+        // --- DATA FETCH LOGIC ---
+        async function loadData() {
+            if (isSyncing) return;
+            isSyncing = true;
+            const syncIcon = document.querySelector('#syncBtn i');
+            syncIcon.classList.add('sync-active');
+
+            try {
+                const res = await fetch(scriptURL + '?nocache=' + new Date().getTime());
+                allData = await res.json();
+                if(document.getElementById('searchInput').value.length >= 3) {
+                    searchVeh();
+                }
+            } catch (err) { 
+                console.error("Cloud Error"); 
+            } finally {
+                isSyncing = false;
+                syncIcon.classList.remove('sync-active');
+            }
+        }
+
+        function searchVeh() {
+            const val = document.getElementById('searchInput').value.toUpperCase().trim();
+            const resultsDiv = document.getElementById('results');
+
+            if (val.length < 3) {
+                resultsDiv.innerHTML = '<p class="text-center text-slate-400 font-bold mt-10 text-[10px] uppercase tracking-widest">Awaiting Plate Number...</p>';
+                return;
+            }
+
+            if (allData.length === 0) {
+                resultsDiv.innerHTML = '<p class="text-center text-orange-500 font-bold mt-10 text-[10px] uppercase tracking-widest animate-pulse">Syncing Database... Please wait</p>';
+                return;
+            }
+
+            const vehicleRecords = allData.filter(item => item.vehicle.toString().toUpperCase() === val);
+            
+            if (vehicleRecords.length === 0) {
+                resultsDiv.innerHTML = `<div class="bg-red-50 p-10 rounded-[2.5rem] text-center border-2 border-red-100">
+                    <h2 class="text-red-900 font-black text-lg uppercase">NOT FOUND</h2>
+                    <p class="text-red-600/60 text-[10px] font-bold mt-1 uppercase">No entry record found</p>
+                </div>`;
+                return;
+            }
+
+            const latestEntry = vehicleRecords[vehicleRecords.length - 1];
+            const latestEntryTime = new Date(latestEntry.time).getTime();
+            const clearedHistory = JSON.parse(localStorage.getItem('smc_exit_logs') || "{}");
+            const lastClearedTime = clearedHistory[val] || 0;
+
+            if (latestEntryTime > lastClearedTime) {
+                resultsDiv.innerHTML = `
+                <div class="bg-emerald-50 border-2 border-emerald-200 p-8 rounded-[2.5rem] text-center shadow-lg">
+                    <div class="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-200"><i class="fas fa-check text-3xl"></i></div>
+                    <h2 class="text-emerald-900 font-black text-2xl uppercase italic">VALID ENTRY</h2>
+                    <div class="my-5 bg-white p-5 rounded-3xl border border-emerald-100">
+                        <p class="text-3xl font-black text-slate-800 tracking-tight">${latestEntry.vehicle}</p>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase mt-2 italic">Paid ₹${latestEntry.amount}</p>
+                    </div>
+                    <button onclick="confirmExit('${latestEntry.vehicle}', ${latestEntryTime})" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl uppercase tracking-widest active:scale-95 transition-all shadow-xl">VERIFY & EXIT</button>
+                </div>`;
+            } else {
+                resultsDiv.innerHTML = `
+                <div class="bg-orange-50 border-2 border-orange-200 p-10 rounded-[2.5rem] text-center">
+                    <i class="fas fa-door-open text-orange-400 text-4xl mb-4"></i>
+                    <h2 class="text-orange-900 font-black text-xl uppercase">ALREADY LEFT</h2>
+                    <p class="text-orange-600/60 text-[10px] font-bold mt-2 uppercase italic tracking-tighter">This payment has been used.</p>
+                </div>`;
+            }
+        }
+
+        function confirmExit(vehNo, entryTime) {
+            let clearedHistory = JSON.parse(localStorage.getItem('smc_exit_logs') || "{}");
+            clearedHistory[vehNo] = entryTime;
+            localStorage.setItem('smc_exit_logs', JSON.stringify(clearedHistory));
+            alert("EXIT GRANTED FOR " + vehNo);
+            document.getElementById('searchInput').value = "";
+            searchVeh();
+        }
+
+        loadData();
+        setInterval(loadData, 20000); 
+    </script>
+</body>
+</html>

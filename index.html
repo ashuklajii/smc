@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SMC Parking - Entry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=Barlow:wght@400;600;700&display=swap');
+        
+        * { font-family: 'Barlow', sans-serif; }
+        .mono { font-family: 'Barlow Condensed', sans-serif; }
+
+        /* ---- CAM OVERLAY ---- */
+        #camOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+
+        /* SCAN ZONE */
+        .scan-zone {
+            position: absolute;
+            width: 88%;
+            height: 110px;
+            top: 50%;
+            transform: translateY(-60%);
+            border-radius: 14px;
+            border: 2.5px solid rgba(251,191,36,0.9);
+            box-shadow: 0 0 0 2000px rgba(0,0,0,0.65);
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .scan-zone.locked { border-color: #4ade80 !important; box-shadow: 0 0 0 2000px rgba(0,0,0,0.65), 0 0 20px rgba(74,222,128,0.4); }
+        .scan-line {
+            position: absolute;
+            left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #fbbf24, transparent);
+            box-shadow: 0 0 12px #fbbf24;
+            animation: sweep 1.4s ease-in-out infinite;
+        }
+        .scan-zone.locked .scan-line { background: linear-gradient(90deg, transparent, #4ade80, transparent); box-shadow: 0 0 12px #4ade80; }
+        @keyframes sweep { 0% { top: 0; } 100% { top: 100%; } }
+
+        /* Corner brackets */
+        .corner { position: absolute; width: 20px; height: 20px; border-color: #fbbf24; border-style: solid; }
+        .tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+        .tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+        .bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+        .br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+        /* AUTO-SCAN indicator */
+        .auto-badge {
+            position: absolute;
+            top: calc(50% - 115px);
+            transform: translateY(-60%);
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 30px;
+            padding: 6px 16px;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pulse-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #fbbf24;
+            animation: blink 1s infinite;
+        }
+        .pulse-dot.green { background: #4ade80; animation: none; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+        /* Result preview */
+        .plate-preview {
+            position: absolute;
+            bottom: 130px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(74,222,128,0.7);
+            border-radius: 16px;
+            padding: 12px 28px;
+            text-align: center;
+            opacity: 0;
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+        .plate-preview.show { opacity: 1; }
+        .plate-preview .pnum { font-size: 28px; font-weight: 900; color: #4ade80; letter-spacing: 0.1em; font-family: 'Barlow Condensed', sans-serif; }
+        .plate-preview .plabel { font-size: 9px; color: rgba(255,255,255,0.5); font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; }
+
+        /* BOTTOM ACTIONS */
+        .cam-actions {
+            position: absolute;
+            bottom: 0;
+            left: 0; right: 0;
+            padding: 20px 16px 36px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* MAIN FORM */
+        .active-btn { border-color: #1e40af !important; background-color: #eff6ff !important; color: #1e40af !important; }
+        .active-pay { border-color: #10b981 !important; background-color: #ecfdf5 !important; color: #065f46 !important; }
+        #sideMenu { transition: transform 0.3s ease; transform: translateX(-100%); }
+        #sideMenu.open { transform: translateX(0); }
+        
+        /* Speed indicator */
+        .speed-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: #f0fdf4;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+            border-radius: 20px;
+            padding: 3px 10px;
+        }
+        .veh-input {
+            width: 100%;
+            padding: 16px;
+            padding-right: 52px;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 18px;
+            font-size: 26px;
+            font-weight: 900;
+            text-align: center;
+            text-transform: uppercase;
+            outline: none;
+            transition: border-color 0.2s;
+            font-family: 'Barlow Condensed', sans-serif;
+            letter-spacing: 0.05em;
+        }
+        .veh-input:focus { border-color: #3b82f6; }
+        .veh-input.filled { border-color: #10b981; background: #f0fdf4; color: #065f46; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <audio id="beepSound" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" type="audio/mp3">
+    </audio>
+
+    <!-- HEADER -->
+    <div class="bg-blue-800 text-white p-4 flex items-center shadow-lg sticky top-0 z-30">
+        <button onclick="toggleMenu()" class="text-2xl p-2"><i class="fas fa-bars"></i></button>
+        <div class="flex-1 text-center pr-8">
+            <h1 class="text-xl font-black italic uppercase mono tracking-tight">SMC Entry <span class="text-blue-300 text-sm ml-1">⚡ Auto-Scan</span></h1>
+        </div>
+    </div>
+
+    <!-- SIDE MENU -->
+    <div id="sideMenu" class="fixed inset-y-0 left-0 w-64 bg-slate-900 z-50 p-6 shadow-2xl">
+        <button onclick="toggleMenu()" class="text-white text-2xl mb-8"><i class="fas fa-times"></i></button>
+        <div class="space-y-6">
+            <a href="index.html" class="block text-blue-400 font-bold uppercase tracking-wider"><i class="fas fa-plus-circle mr-2"></i> Entry Point</a>
+            <a href="admin.html" class="block text-slate-300 font-bold uppercase tracking-wider"><i class="fas fa-search mr-2"></i> Exit / Search</a>
+        </div>
+    </div>
+    <div id="overlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/50 hidden z-40"></div>
+
+    <!-- MAIN FORM -->
+    <div class="max-w-md mx-auto p-4">
+        <div id="formSection" class="bg-white rounded-[2rem] shadow-xl p-6 space-y-5 border border-slate-100">
+
+            <!-- Vehicle Number -->
+            <div>
+                <div class="flex items-center justify-between mb-1 ml-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vehicle Number</label>
+                    <span class="speed-chip"><span style="width:6px;height:6px;border-radius:50%;background:#22c55e;display:inline-block;"></span> AI Auto-Scan</span>
+                </div>
+                <div class="relative">
+                    <input id="vehNo" type="text" placeholder="GJ05XX0000"
+                        class="veh-input"
+                        oninput="onPlateInput(this)">
+                    <button onclick="openCam()" class="absolute right-3 top-1/2 -translate-y-1/2 text-blue-600 p-2 text-xl hover:text-blue-800 transition-colors">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Vehicle Type -->
+            <div class="grid grid-cols-3 gap-2">
+                <button onclick="sel('2',10,this)" class="t-btn p-4 border-2 rounded-2xl bg-slate-50 font-bold flex flex-col items-center transition-all">
+                    <span class="text-2xl">🏍️</span><span class="text-[9px] mt-1 uppercase tracking-wide">2-Wheel</span>
+                </button>
+                <button onclick="sel('3',15,this)" class="t-btn p-4 border-2 rounded-2xl bg-slate-50 font-bold flex flex-col items-center transition-all">
+                    <span class="text-2xl">🛺</span><span class="text-[9px] mt-1 uppercase tracking-wide">3-Wheel</span>
+                </button>
+                <button onclick="sel('4',20,this)" class="t-btn p-4 border-2 rounded-2xl bg-slate-50 font-bold flex flex-col items-center transition-all">
+                    <span class="text-2xl">🚗</span><span class="text-[9px] mt-1 uppercase tracking-wide">4-Wheel</span>
+                </button>
+            </div>
+
+            <!-- Payment -->
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payment Method</label>
+                <div class="grid grid-cols-2 gap-3 mt-1">
+                    <button onclick="setPayMode('Cash', this)" class="pay-btn p-3 rounded-xl font-bold flex items-center justify-center gap-2 active-pay border-2 border-transparent transition-all">
+                        <i class="fas fa-money-bill-wave"></i> Cash
+                    </button>
+                    <button onclick="setPayMode('Online', this)" class="pay-btn p-3 rounded-xl font-bold flex items-center justify-center gap-2 border-2 border-slate-200 transition-all">
+                        <i class="fas fa-qrcode"></i> Online
+                    </button>
+                </div>
+            </div>
+
+            <!-- Total -->
+            <div class="bg-slate-900 p-5 rounded-2xl flex justify-between items-center text-white">
+                <span id="displayTotal" class="text-3xl font-black italic text-emerald-400 w-full text-center mono">₹0</span>
+            </div>
+
+            <button id="submitBtn" onclick="submitEntry()"
+                class="w-full bg-blue-600 text-white font-black py-5 rounded-2xl shadow-xl uppercase mono tracking-wide text-lg transition-all hover:bg-blue-700 active:scale-95">
+                Confirm & Print
+            </button>
+        </div>
+
+        <!-- Receipt -->
+        <div id="receipt" class="hidden bg-white rounded-[2rem] p-8 text-center shadow-2xl">
+            <div class="text-5xl mb-4">✅</div>
+            <h2 class="text-2xl font-black mb-2 italic mono uppercase">Entry Logged!</h2>
+            <p id="resInfo" class="font-black text-2xl mb-1 text-blue-800 mono"></p>
+            <p id="resTime" class="text-sm text-slate-400 font-bold mb-6"></p>
+            <div id="qrContainer" class="hidden mb-4 flex justify-center"></div>
+            <button onclick="location.reload()" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase mono tracking-wide">
+                ⚡ Next Vehicle
+            </button>
+        </div>
+    </div>
+
+    <!-- ========== CAMERA OVERLAY ========== -->
+    <div id="camOverlay">
+        <video id="video" autoplay playsinline muted></video>
+
+        <!-- Scan zone with corners -->
+        <div class="scan-zone" id="scanZone">
+            <div class="scan-line"></div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+        </div>
+
+        <!-- Auto-scan status badge -->
+        <div class="auto-badge" id="autoBadge">
+            <div class="pulse-dot" id="pulseDot"></div>
+            <span id="scanStatus">Auto-scanning...</span>
+        </div>
+
+        <!-- Detected plate preview -->
+        <div class="plate-preview" id="platePreview">
+            <div class="plabel">Detected Plate</div>
+            <div class="pnum" id="previewPlate">GJ05AB1234</div>
+            <div class="plabel mt-1">Tap confirm to use</div>
+        </div>
+
+        <!-- Canvas (hidden) -->
+        <canvas id="canvas" class="hidden"></canvas>
+
+        <!-- Bottom controls -->
+        <div class="cam-actions">
+            <button onclick="closeCam()" class="bg-white/20 backdrop-blur text-white py-4 px-6 rounded-2xl font-bold uppercase text-sm">
+                ← Back
+            </button>
+            <button id="confirmBtn" onclick="confirmPlate()" class="hidden flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black uppercase text-base shadow-lg">
+                ✓ Use This Plate
+            </button>
+            <button id="snapBtn" onclick="manualSnap()" class="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-base shadow-lg">
+                📸 Scan Now
+            </button>
+            <button onclick="toggleFlash()" id="flashBtn" class="bg-white/20 backdrop-blur text-white py-4 px-5 rounded-2xl text-xl">
+                <i class="fas fa-bolt"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // =============================================
+        //  CONFIG
+        // =============================================
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbz6kvy4Wn8dmmXVbcx2gg-PI8D6a30l7x5Z7X6Xn4FwrfycrJ3A403_wm1batb39_8N/exec';
+        const AI_SERVER_URL = "http://192.168.241.1:5501/scan";
+
+        // =============================================
+        //  STATE
+        // =============================================
+        let amt = 0, type = "", payMode = "Cash";
+        let stream = null, flash = false;
+        let autoScanInterval = null;
+        let isScanning = false;
+        let detectedPlate = null;
+        let autoScanEnabled = true;
+
+        // Pre-create the canvas once for performance
+        const offscreen = document.createElement('canvas');
+        const offCtx = offscreen.getContext('2d');
+
+        // =============================================
+        //  SIDE MENU
+        // =============================================
+        function toggleMenu() {
+            document.getElementById('sideMenu').classList.toggle('open');
+            document.getElementById('overlay').classList.toggle('hidden');
+        }
+
+        // =============================================
+        //  FORM LOGIC
+        // =============================================
+        function onPlateInput(el) {
+            el.value = el.value.toUpperCase();
+            el.classList.toggle('filled', el.value.length >= 6);
+        }
+
+        function sel(t, r, btn) {
+            type = t + "-Wheel"; amt = r;
+            document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active-btn'));
+            btn.classList.add('active-btn');
+            document.getElementById('displayTotal').innerText = "₹" + r;
+        }
+
+        function setPayMode(mode, btn) {
+            payMode = mode;
+            document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('active-pay'));
+            btn.classList.add('active-pay');
+        }
+
+        async function submitEntry() {
+            const v = document.getElementById('vehNo').value.toUpperCase().trim();
+            if (!v || !type) { alert("Vehicle No and Type required!"); return; }
+            
+            const btn = document.getElementById('submitBtn');
+            btn.innerText = "SAVING...";
+            btn.disabled = true;
+
+            try {
+                await fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({ vehicle: v, type, amount: amt, mode: payMode })
+                });
+            } catch(e) {}
+
+            document.getElementById('formSection').classList.add('hidden');
+            document.getElementById('receipt').classList.remove('hidden');
+            document.getElementById('resInfo').innerText = v;
+            document.getElementById('resTime').innerText = new Date().toLocaleString('en-IN');
+
+            if (payMode === 'Online') {
+                const upiLink = `upi://pay?pa=s8834774@oksbi&pn=SMC_Parking&am=${amt}&cu=INR`;
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiLink)}`;
+                document.getElementById('qrContainer').innerHTML = `<img src="${qrUrl}" class="mx-auto rounded-xl" alt="UPI QR">`;
+                document.getElementById('qrContainer').classList.remove('hidden');
+            }
+        }
+
+        // =============================================
+        //  CAMERA FUNCTIONS
+        // =============================================
+        async function openCam() {
+            detectedPlate = null;
+            document.getElementById('camOverlay').style.display = 'flex';
+            resetScanUI();
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    // Start auto-scan AFTER camera is ready
+                    if (autoScanEnabled) startAutoScan();
+                };
+            } catch (err) {
+                alert("Camera Error: " + err.message);
+                closeCam();
+            }
+        }
+
+        function closeCam() {
+            stopAutoScan();
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null;
+            document.getElementById('camOverlay').style.display = 'none';
+        }
+
+        async function toggleFlash() {
+            if (!stream) return;
+            const track = stream.getVideoTracks()[0];
+            flash = !flash;
+            try {
+                await track.applyConstraints({ advanced: [{ torch: flash }] });
+                document.getElementById('flashBtn').style.color = flash ? '#fbbf24' : 'white';
+            } catch(e) {}
+        }
+
+        // =============================================
+        //  ⚡ AUTO-SCAN ENGINE (The speed magic!)
+        // =============================================
+        function startAutoScan() {
+            if (autoScanInterval) return;
+            setStatus("Auto-scanning...", false);
+            // Scan every 800ms — fast enough to feel instant
+            // Server warmup means response is ~100-300ms
+            autoScanInterval = setInterval(autoSnap, 800);
+        }
+
+        function stopAutoScan() {
+            if (autoScanInterval) {
+                clearInterval(autoScanInterval);
+                autoScanInterval = null;
+            }
+            isScanning = false;
+        }
+
+        async function autoSnap() {
+            // Don't pile up requests
+            if (isScanning) return;
+            isScanning = true;
+
+            try {
+                const blob = await captureFrame(640, 360); // Lower res for speed
+                const result = await sendToAI(blob);
+                
+                if (result && result.plate && result.plate !== "Not Found") {
+                    handleDetection(result.plate);
+                }
+            } catch(e) {
+                // Silently ignore auto-scan errors
+            } finally {
+                isScanning = false;
+            }
+        }
+
+        async function manualSnap() {
+            stopAutoScan();
+            setStatus("AI Reading...", false);
+            document.getElementById('snapBtn').innerText = "⏳ Processing...";
+            document.getElementById('snapBtn').disabled = true;
+
+            try {
+                const blob = await captureFrame(1280, 720); // Full res for manual
+                const result = await sendToAI(blob);
+
+                if (result && result.plate && result.plate !== "Not Found") {
+                    handleDetection(result.plate);
+                } else {
+                    setStatus("Not found — try again", false);
+                    startAutoScan();
+                }
+            } catch(e) {
+                alert("Connection Error: Is Python server running?");
+                startAutoScan();
+            } finally {
+                document.getElementById('snapBtn').innerText = "📸 Scan Now";
+                document.getElementById('snapBtn').disabled = false;
+            }
+        }
+
+        // =============================================
+        //  FRAME CAPTURE (Ultra optimized)
+        // =============================================
+        async function captureFrame(targetW, targetH) {
+            const video = document.getElementById('video');
+            
+            // Use offscreen canvas to avoid DOM reflow
+            offscreen.width = targetW;
+            offscreen.height = targetH;
+            offCtx.drawImage(video, 0, 0, targetW, targetH);
+
+            return new Promise(resolve => {
+                offscreen.toBlob(resolve, 'image/jpeg', 0.75); // 0.75 quality = smaller, faster upload
+            });
+        }
+
+        // =============================================
+        //  AI COMMUNICATION
+        // =============================================
+        async function sendToAI(blob) {
+            const formData = new FormData();
+            formData.append('image', blob, 'plate.jpg');
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+            try {
+                const res = await fetch(AI_SERVER_URL, {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                return await res.json();
+            } catch(e) {
+                clearTimeout(timeout);
+                throw e;
+            }
+        }
+
+        // =============================================
+        //  DETECTION HANDLING
+        // =============================================
+        function handleDetection(plate) {
+            if (detectedPlate === plate) return; // Same plate, skip
+            detectedPlate = plate;
+
+            // Play beep
+            try { document.getElementById('beepSound').play(); } catch(e) {}
+
+            // Lock UI
+            stopAutoScan();
+            setStatus("Plate Locked! ✓", true);
+            document.getElementById('scanZone').classList.add('locked');
+
+            // Show preview
+            document.getElementById('previewPlate').innerText = plate;
+            document.getElementById('platePreview').classList.add('show');
+            document.getElementById('confirmBtn').classList.remove('hidden');
+            document.getElementById('snapBtn').classList.add('hidden');
+        }
+
+        function confirmPlate() {
+            if (!detectedPlate) return;
+            document.getElementById('vehNo').value = detectedPlate;
+            document.getElementById('vehNo').classList.add('filled');
+            closeCam();
+        }
+
+        function resetScanUI() {
+            detectedPlate = null;
+            document.getElementById('scanZone').classList.remove('locked');
+            document.getElementById('platePreview').classList.remove('show');
+            document.getElementById('confirmBtn').classList.add('hidden');
+            document.getElementById('snapBtn').classList.remove('hidden');
+            document.getElementById('snapBtn').innerText = "📸 Scan Now";
+        }
+
+        function setStatus(text, isLocked) {
+            document.getElementById('scanStatus').innerText = text;
+            document.getElementById('pulseDot').className = 'pulse-dot' + (isLocked ? ' green' : '');
+        }
+
+        // =============================================
+        //  KEYBOARD SHORTCUT: Space = manual snap
+        // =============================================
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space' && document.getElementById('camOverlay').style.display === 'flex') {
+                e.preventDefault();
+                manualSnap();
+            }
+        });
+    </script>
+</body>
+</html>

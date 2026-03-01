@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMC Head Admin - Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .filter-btn { transition: all 0.3s; border: 2px solid transparent; }
+        .filter-active { background-color: #1e3a8a !important; color: white !important; border-color: #3b82f6; }
+        #sideMenu { transition: transform 0.3s ease; transform: translateX(-100%); }
+        #sideMenu.open { transform: translateX(0); }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+    <div class="bg-blue-900 text-white p-4 shadow-2xl sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleMenu()" class="text-2xl p-2 hover:text-blue-300 transition-colors"><i class="fas fa-bars"></i></button>
+                <h1 class="text-xl font-black italic tracking-tighter uppercase">SMC <span class="text-blue-400">Analytics</span></h1>
+            </div>
+            
+            <div class="bg-blue-950 p-1 rounded-xl hidden md:flex gap-1">
+                <button onclick="changeFilter('today', this)" class="filter-btn filter-active px-4 py-2 rounded-lg text-[10px] font-bold uppercase">Today</button>
+                <button onclick="changeFilter('weekly', this)" class="filter-btn px-4 py-2 rounded-lg text-[10px] font-bold uppercase text-blue-300">Weekly</button>
+                <button onclick="changeFilter('monthly', this)" class="filter-btn px-4 py-2 rounded-lg text-[10px] font-bold uppercase text-blue-300">Monthly</button>
+                <button onclick="changeFilter('yearly', this)" class="filter-btn px-4 py-2 rounded-lg text-[10px] font-bold uppercase text-blue-300">Yearly</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sideMenu" class="fixed inset-y-0 left-0 w-64 bg-slate-900 z-50 p-6 shadow-2xl">
+        <button onclick="toggleMenu()" class="text-white text-2xl mb-8"><i class="fas fa-times"></i></button>
+        <nav class="space-y-6">
+            <a href="index.html" class="flex items-center gap-4 text-slate-300 hover:text-blue-400 font-bold uppercase text-xs tracking-widest transition-colors">
+                <i class="fas fa-plus-circle"></i> Entry Point
+            </a>
+            <a href="admin.html" class="flex items-center gap-4 text-slate-300 hover:text-blue-400 font-bold uppercase text-xs tracking-widest transition-colors">
+                <i class="fas fa-sign-out-alt"></i> Exit Verify
+            </a>
+            <a href="#" class="flex items-center gap-4 text-blue-400 font-bold uppercase text-xs tracking-widest border-l-4 border-blue-400 pl-2">
+                <i class="fas fa-chart-line"></i> Analytics
+            </a>
+        </nav>
+    </div>
+    <div id="menuOverlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/50 hidden z-40"></div>
+
+    <div class="max-w-5xl mx-auto p-4 md:p-8">
+        
+        <div class="md:hidden bg-white p-1 rounded-2xl flex justify-between mb-6 shadow-sm border overflow-x-auto gap-1">
+            <button onclick="changeFilter('today', this)" class="filter-btn filter-active flex-1 py-3 px-2 rounded-xl text-[9px] font-bold uppercase">Today</button>
+            <button onclick="changeFilter('weekly', this)" class="filter-btn flex-1 py-3 px-2 rounded-xl text-[9px] font-bold uppercase text-slate-400">Weekly</button>
+            <button onclick="changeFilter('monthly', this)" class="filter-btn flex-1 py-3 px-2 rounded-xl text-[9px] font-bold uppercase text-slate-400">Monthly</button>
+            <button onclick="changeFilter('yearly', this)" class="filter-btn flex-1 py-3 px-2 rounded-xl text-[9px] font-bold uppercase text-slate-400">Yearly</button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border-b-8 border-blue-600">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Revenue Breakdown</p>
+                <h2 id="totalRev" class="text-4xl font-black text-slate-800 tracking-tighter">₹0</h2>
+                <div class="flex gap-4 mt-4 pt-4 border-t border-slate-50">
+                    <div>
+                        <p class="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Online</p>
+                        <p id="onlineRev" class="text-sm font-black text-slate-700">₹0</p>
+                    </div>
+                    <div>
+                        <p class="text-[8px] font-bold text-orange-500 uppercase tracking-widest">Cash</p>
+                        <p id="cashRev" class="text-sm font-black text-slate-700">₹0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border-b-8 border-emerald-500">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Traffic Volume</p>
+                <h2 id="totalVeh" class="text-4xl font-black text-slate-800 tracking-tighter">0</h2>
+                <p id="statsPeriod" class="text-[10px] text-slate-400 mt-4 font-bold uppercase italic">Report: Today</p>
+            </div>
+
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border-b-8 border-orange-400">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Avg Per Vehicle</p>
+                <h2 id="avgRev" class="text-4xl font-black text-slate-800 tracking-tighter">₹0</h2>
+                <p class="text-[10px] text-slate-400 mt-4 font-bold uppercase italic tracking-tighter">Based on selection</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-200">
+            <div class="p-6 border-b bg-slate-50 flex justify-between items-center">
+                <h3 class="font-black text-slate-700 uppercase text-xs tracking-widest">Transaction Records</h3>
+                <button onclick="loadDashboard()" class="text-blue-600 text-[10px] font-black uppercase"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-100 text-[9px] font-black text-slate-400 uppercase">
+                        <tr>
+                            <th class="p-5">Vehicle No.</th>
+                            <th class="p-5 text-center">Payment</th>
+                            <th class="p-5">IST Time</th>
+                            <th class="p-5 text-right">Fee</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="text-sm font-bold text-slate-700">
+                        <tr><td colspan="4" class="p-20 text-center text-slate-300 uppercase italic text-xs tracking-widest animate-pulse">Fetching Cloud Database...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbz6kvy4Wn8dmmXVbcx2gg-PI8D6a30l7x5Z7X6Xn4FwrfycrJ3A403_wm1batb39_8N/exec';
+        let rawData = [];
+        let currentFilter = 'today';
+
+        function toggleMenu() {
+            document.getElementById('sideMenu').classList.toggle('open');
+            document.getElementById('menuOverlay').classList.toggle('hidden');
+        }
+
+        function changeFilter(type, btn) {
+            currentFilter = type;
+            // Update all buttons (Mobile + Desktop)
+            document.querySelectorAll('.filter-btn').forEach(b => {
+                b.classList.remove('filter-active');
+                b.classList.add('text-slate-400');
+            });
+            btn.classList.add('filter-active');
+            btn.classList.remove('text-slate-400');
+            processData();
+        }
+
+        function getISTDate(dateInput) {
+            let date = new Date(dateInput);
+            return new Date(date.getTime() + (date.getTimezoneOffset() + 330) * 60000);
+        }
+
+        async function loadDashboard() {
+            try {
+                const res = await fetch(scriptURL);
+                rawData = await res.json();
+                processData();
+            } catch (e) {
+                document.getElementById('tableBody').innerHTML = '<tr><td colspan="4" class="p-10 text-center text-red-500 font-black">SYNC FAILED</td></tr>';
+            }
+        }
+
+        function processData() {
+            const nowIST = getISTDate(new Date());
+            const filtered = rawData.filter(item => {
+                const itemIST = getISTDate(item.time);
+                
+                if (currentFilter === 'today') {
+                    return itemIST.toDateString() === nowIST.toDateString();
+                }
+                if (currentFilter === 'weekly') {
+                    const diffDays = (nowIST - itemIST) / (1000 * 60 * 60 * 24);
+                    return diffDays <= 7;
+                }
+                if (currentFilter === 'monthly') {
+                    return itemIST.getMonth() === nowIST.getMonth() && itemIST.getFullYear() === nowIST.getFullYear();
+                }
+                if (currentFilter === 'yearly') {
+                    return itemIST.getFullYear() === nowIST.getFullYear();
+                }
+            });
+            renderUI(filtered);
+        }
+
+        function renderUI(data) {
+            let total = 0, online = 0, cash = 0, html = "";
+            
+            data.slice().reverse().forEach(item => {
+                const amt = parseFloat(item.amount) || 0;
+                const mode = (item.mode || "CASH").toUpperCase();
+                total += amt;
+                if(mode === "ONLINE") online += amt; else cash += amt;
+
+                const istTime = getISTDate(item.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+                const badge = mode === "ONLINE" ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600';
+                
+                html += `
+                    <tr class="border-b hover:bg-slate-50 transition-colors">
+                        <td class="p-5 font-black uppercase text-slate-800 tracking-tighter text-base">${item.vehicle}</td>
+                        <td class="p-5 text-center"><span class="${badge} px-2 py-1 rounded-[6px] text-[8px] font-black uppercase">${mode}</span></td>
+                        <td class="p-5 text-[10px] text-slate-400 font-bold">${istTime}</td>
+                        <td class="p-5 text-right text-blue-800 font-black italic">₹${amt}</td>
+                    </tr>`;
+            });
+
+            document.getElementById('tableBody').innerHTML = html || '<tr><td colspan="4" class="p-20 text-center text-slate-400 uppercase text-[10px] font-black">No transactions found for this period</td></tr>';
+            document.getElementById('totalRev').innerText = "₹" + total.toLocaleString('en-IN');
+            document.getElementById('onlineRev').innerText = "₹" + online.toLocaleString('en-IN');
+            document.getElementById('cashRev').innerText = "₹" + cash.toLocaleString('en-IN');
+            document.getElementById('totalVeh').innerText = data.length;
+            document.getElementById('avgRev').innerText = "₹" + (data.length > 0 ? (total / data.length).toFixed(0) : 0);
+            document.getElementById('statsPeriod').innerText = "Report: " + currentFilter;
+        }
+
+        loadDashboard();
+        setInterval(loadDashboard, 60000); // Auto-refresh every 60s
+    </script>
+</body>
+</html>
